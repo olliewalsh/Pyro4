@@ -9,7 +9,9 @@ Pyro - Python Remote Objects.  Copyright by Irmen de Jong (irmen@razorvine.net).
 from __future__ import with_statement
 import socket, logging, sys, os
 import struct
+import threading
 import Pyro4.util
+import Pyro4.config
 from Pyro4 import socketutil, errors
 from .threadpool import Pool
 
@@ -93,7 +95,10 @@ class SocketServer_Threadpool(object):
                 self.locationStr="[%s]:%d" % (host, port)
             else:
                 self.locationStr="%s:%d" % (host, port)
-        self.pool = Pool()
+        if Pyro4.config.THREADPOOL_SIZE > 0:
+            self.pool = Pool()
+        else:
+            self.pool = None
 
     def __del__(self):
         if self.sock is not None:
@@ -102,8 +107,11 @@ class SocketServer_Threadpool(object):
             self.pool.close()
 
     def __repr__(self):
-        return "<%s on %s, %d workers, %d jobs>" % (self.__class__.__name__, self.locationStr,
-            self.pool.num_workers(), self.pool.num_jobs())
+        if self.pool is not None:
+            return "<%s on %s, %d workers, %d jobs>" % (self.__class__.__name__, self.locationStr,
+                self.pool.num_workers(), self.pool.num_jobs())
+        else:
+            return "<%s on %s>" % (self.__class__.__name__, self.locationStr)
 
     def loop(self, loopCondition=lambda: True):
         log.debug("threadpool server requestloop")
@@ -136,7 +144,10 @@ class SocketServer_Threadpool(object):
             log.debug("connected %s", caddr)
             if Pyro4.config.COMMTIMEOUT:
                 csock.settimeout(Pyro4.config.COMMTIMEOUT)
-            self.pool.process(ClientConnectionJob(csock, caddr, self.daemon))
+            if self.pool:
+                self.pool.process(ClientConnectionJob(csock, caddr, self.daemon))
+            else:
+                threading.Thread(target=ClientConnectionJob(csock, caddr, self.daemon)).start()
         except socket.timeout:
             pass  # just continue the loop on a timeout on accept
 
@@ -157,7 +168,8 @@ class SocketServer_Threadpool(object):
             except Exception:
                 pass
             self.sock=None
-        self.pool.close()
+        if self.pool is not None:
+            self.pool.close()
 
     @property
     def sockets(self):
