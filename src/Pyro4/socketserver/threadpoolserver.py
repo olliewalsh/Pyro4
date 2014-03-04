@@ -11,7 +11,7 @@ import socket, logging, sys, os
 import struct
 import threading
 import Pyro4.util
-import Pyro4.config
+import Pyro4
 from Pyro4 import socketutil, errors
 from .threadpool import Pool
 
